@@ -2,19 +2,23 @@ var createGame = require('voxel-engine')
 var THREE = require('three')
 var perlin = require('voxel-perlin-terrain')
 
-window.generator = perlin(2, 32)
+var chunkSize = 32
+var chunkDistance = 2
+
+window.generator = perlin(chunkDistance, chunkSize)
 window.game = createGame({
   generateVoxelChunk: generator,
   texturePath: './textures/',
   materials: ['grass', 'brick', 'dirt', 'obsidian', 'crate'],
   cubeSize: 25,
-  chunkSize: 32,
-  chunkDistance: 2,
+  chunkSize: chunkSize,
+  chunkDistance: chunkDistance,
   startingPosition: new THREE.Vector3(35, 1000, 35),
   worldOrigin: new THREE.Vector3(0,0,0),
   controlOptions: {jump: 6}
 })
 
+// point camera down initially
 game.controls.pitchObject.rotation.x = -1.5
 
 game.on('collision', function (item) {
