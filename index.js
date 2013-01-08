@@ -1,4 +1,4 @@
-var Perlin = require('./perlin')
+var Perlin = require('perlin')
 var voxel = require('voxel')
 var generator = new Perlin()
 

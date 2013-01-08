@@ -4,7 +4,8 @@
     "description" : "generate voxel terrain using perlin noise",
     "main" : "index.js",
     "dependencies" : {
-      "voxel": "0.0.9"
+      "voxel": "0.0.9",
+      "perlin": "0.0.2"
     },
     "devDependencies" : {
         "browserify" : "~1.17.1",
