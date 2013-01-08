@@ -417,7 +417,6 @@ function Game(opts) {
       return voxel.generate(low, high, opts.generate)
     }
   } else this.generateVoxelChunk = opts.generateVoxelChunk
-  
   this.THREE = THREE
   this.texturePath = opts.texturePath || '/textures/'
   this.cubeSize = opts.cubeSize || 25
@@ -76859,26 +76858,31 @@ require.define("/node_modules/voxel-perlin-terrain/package.json",function(requir
 });
 
 require.define("/node_modules/voxel-perlin-terrain/index.js",function(require,module,exports,__dirname,__filename,process,global){var Perlin = require('./perlin')
+var voxel = require('voxel')
 var generator = new Perlin()
 
-module.exports = function generate(l, h) {
-  var d = [ h[0]-l[0], h[1]-l[1], h[2]-l[2] ]
-  var voxels = new Int8Array(d[0]*d[1]*d[2])
-  
-  generator.generate( [l[0], l[2]], [h[0], h[2]], function ( point, value ) {
-    var y = ~~scale(value, 0, 1, 0, d[1])
-    var x = point[0]
-    var z = point[1]
-    var idx = voxelIndex(x, y, z, d[1], d[2])
-    voxels[idx] = 1
+module.exports = function generate(chunkDistance, chunkSize) {
+  var width = chunkDistance * 2 * chunkSize
+  var noise = this.noise = new Int8Array(width * width)
+  var lowerLeft = [0, 0]
+  var upperRight = [width, width]
+  generator.generate( lowerLeft, upperRight, function ( point, value ) {
+    noise[point[0] + point[1]*width] = ~~scale(value, 0, 1, 0, chunkSize)
   })
   
-  return {voxels: voxels, dims: d}
-
-}
-
-function voxelIndex(x, y, z, ySize, zSize) {
-  return x + y*ySize + z*zSize*zSize
+  // todo: investigate using typed array 'views' to lower memory footprint
+  return function perlinChunk(l, h) {
+    var fromLow = chunkSize * -chunkDistance
+    var fromHigh = chunkSize * chunkDistance
+    var toLow = lowerLeft[0]
+    var toHigh = upperRight[0]
+    return voxel.generate(l, h, function(x, y, z, n) {
+      x = scale(x, fromLow, fromHigh, toLow, toHigh)
+      z = scale(z, fromLow, fromHigh, toLow, toHigh)
+      y = scale(y, fromLow, fromHigh, toLow, toHigh)
+      return y > noise[x + z*width] ? 0 : 1
+    })
+  }
 }
 
 function scale( x, fromLow, fromHigh, toLow, toHigh ) {
@@ -77018,25 +77022,662 @@ Perlin.prototype = {
 module.exports = Perlin
 });
 
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/package.json",function(require,module,exports,__dirname,__filename,process,global){module.exports = {"main":"index.js"}
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/index.js",function(require,module,exports,__dirname,__filename,process,global){var chunker = require('./chunker')
+
+module.exports = function(opts) {
+  if (!opts.generateVoxelChunk) opts.generateVoxelChunk = function(low, high) {
+    return generate(low, high, module.exports.generator['Valley'])
+  }
+  return chunker(opts)
+}
+
+module.exports.meshers = {
+  culled: require('./meshers/culled').mesher,
+  greedy: require('./meshers/greedy').mesher,
+  monotone: require('./meshers/monotone').mesher,
+  stupid: require('./meshers/stupid').mesher
+}
+
+module.exports.Chunker = chunker.Chunker
+module.exports.geometry = {}
+module.exports.generator = {}
+module.exports.generate = generate
+
+// from https://github.com/mikolalysenko/mikolalysenko.github.com/blob/master/MinecraftMeshes2/js/testdata.js#L4
+function generate(l, h, f) {
+  var d = [ h[0]-l[0], h[1]-l[1], h[2]-l[2] ]
+  var v = new Int8Array(d[0]*d[1]*d[2])
+  var n = 0
+  for(var k=l[2]; k<h[2]; ++k)
+  for(var j=l[1]; j<h[1]; ++j)
+  for(var i=l[0]; i<h[0]; ++i, ++n) {
+    v[n] = f(i,j,k,n)
+  }
+  return {voxels:v, dims:d}
+}
+
+// shape and terrain generator functions
+module.exports.generator['Sphere'] = function(i,j,k) {
+  return i*i+j*j+k*k <= 16*16 ? 1 : 0
+}
+
+module.exports.generator['Noise'] = function(i,j,k) {
+  return Math.random() < 0.1 ? Math.random() * 0xffffff : 0;
+}
+
+module.exports.generator['Dense Noise'] = function(i,j,k) {
+  return Math.round(Math.random() * 0xffffff);
+}
+
+module.exports.generator['Checker'] = function(i,j,k) {
+  return !!((i+j+k)&1) ? (((i^j^k)&2) ? 1 : 0xffffff) : 0;
+}
+
+module.exports.generator['Hill'] = function(i,j,k) {
+  return j <= 16 * Math.exp(-(i*i + k*k) / 64) ? 1 : 0;
+}
+
+module.exports.generator['Valley'] = function(i,j,k) {
+  return j <= (i*i + k*k) * 31 / (32*32*2) + 1 ? 1 : 0;
+}
+
+module.exports.generator['Hilly Terrain'] = function(i,j,k) {
+  var h0 = 3.0 * Math.sin(Math.PI * i / 12.0 - Math.PI * k * 0.1) + 27;    
+  if(j > h0+1) {
+    return 0;
+  }
+  if(h0 <= j) {
+    return 1;
+  }
+  var h1 = 2.0 * Math.sin(Math.PI * i * 0.25 - Math.PI * k * 0.3) + 20;
+  if(h1 <= j) {
+    return 2;
+  }
+  if(2 < j) {
+    return Math.random() < 0.1 ? 0x222222 : 0xaaaaaa;
+  }
+  return 3;
+}
+
+// convenience function that uses the above functions to prebake some simple voxel geometries
+module.exports.generateExamples = function() {
+  return {
+    'Sphere': generate([-16,-16,-16], [16,16,16], module.exports.generator['Sphere']),
+    'Noise': generate([0,0,0], [16,16,16], module.exports.generator['Noise']),
+    'Dense Noise': generate([0,0,0], [16,16,16], module.exports.generator['Dense Noise']),
+    'Checker': generate([0,0,0], [8,8,8], module.exports.generator['Checker']),
+    'Hill': generate([-16, 0, -16], [16,16,16], module.exports.generator['Hill']),
+    'Valley': generate([0,0,0], [32,32,32], module.exports.generator['Valley']),
+    'Hilly Terrain': generate([0, 0, 0], [32,32,32], module.exports.generator['Hilly Terrain'])
+  }
+}
+
+
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/chunker.js",function(require,module,exports,__dirname,__filename,process,global){module.exports = function(opts) {
+  return new Chunker(opts)
+}
+
+module.exports.Chunker = Chunker
+
+function Chunker(opts) {
+  this.distance = opts.chunkDistance || 2
+  this.chunkSize = opts.chunkSize || 32
+  this.cubeSize = opts.cubeSize || 25
+  this.generateVoxelChunk = opts.generateVoxelChunk
+  this.chunks = {}
+  this.meshes = {}
+}
+
+Chunker.prototype.generateMissingChunks = function(position) {
+  var current = this.chunkAtPosition(position)
+  var x = current[0]
+  var y = current[1]
+  var z = current[2]
+  var dist = this.distance
+  for (var cx = (x - dist); cx !== (x + dist); ++cx) {
+    for (var cy = (y - dist); cy !== (y + dist); ++cy) {
+      for (var cz = (z - dist); cz !== (z + dist); ++cz) {
+        if (!this.chunks[[cx, cy, cz].join('|')]) {
+          this.generateChunk(cx, cy, cz)
+        }
+      }
+    }
+  }
+  return this.chunks
+}
+
+Chunker.prototype.getBounds = function(x, y, z) {
+  var size = this.chunkSize
+  var low = [x * size, y * size, z * size]
+  var high = [low[0] + size, low[1] + size, low[2] + size]
+  return [low, high]
+}
+
+Chunker.prototype.generateChunk = function(x, y, z) {
+  var self = this
+  var bounds = this.getBounds(x, y, z)
+  var chunk = this.generateVoxelChunk(bounds[0], bounds[1], x, y, z)
+  var position = [x, y, z]
+  chunk.position = position
+  this.chunks[position.join('|')] = chunk
+  return chunk
+}
+
+Chunker.prototype.chunkAtPosition = function(position) {
+  var chunkSize = this.chunkSize
+  var cubeSize = this.cubeSize
+  var cx = position.x / cubeSize / chunkSize
+  var cy = position.y / cubeSize / chunkSize
+  var cz = position.z / cubeSize / chunkSize
+  var chunkPos = [Math.floor(cx), Math.floor(cy), Math.floor(cz)]
+  return chunkPos
+};
+
+Chunker.prototype.voxelIndex = function(pos) {
+  var size = this.chunkSize
+  var v = this.voxelVector(pos)
+  var vidx = v.x + v.y*size + v.z*size*size
+  return vidx
+}
+
+Chunker.prototype.voxelAtPosition = function(pos, val) {
+  var ckey = this.chunkAtPosition(pos).join('|')
+  var chunk = this.chunks[ckey]
+  if (!chunk) return false
+  var vidx = this.voxelIndex(pos)
+  if (!vidx) return false
+  if (typeof val !== 'undefined') {
+    chunk.voxels[vidx] = val
+  }
+  var v = chunk.voxels[vidx]
+  return v
+}
+
+Chunker.prototype.voxelVector = function(pos) {
+  var size = this.chunkSize
+  var cubeSize = this.cubeSize
+  var vx = (size + Math.floor(pos.x / cubeSize) % size) % size
+  var vy = (size + Math.floor(pos.y / cubeSize) % size) % size
+  var vz = (size + Math.floor(pos.z / cubeSize) % size) % size
+  return {x: Math.abs(vx), y: Math.abs(vy), z: Math.abs(vz)}
+};
+
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/meshers/culled.js",function(require,module,exports,__dirname,__filename,process,global){//Naive meshing (with face culling)
+function CulledMesh(volume, dims) {
+  //Precalculate direction vectors for convenience
+  var dir = new Array(3);
+  for(var i=0; i<3; ++i) {
+    dir[i] = [[0,0,0], [0,0,0]];
+    dir[i][0][(i+1)%3] = 1;
+    dir[i][1][(i+2)%3] = 1;
+  }
+  //March over the volume
+  var vertices = []
+    , faces = []
+    , x = [0,0,0]
+    , B = [[false,true]    //Incrementally update bounds (this is a bit ugly)
+          ,[false,true]
+          ,[false,true]]
+    , n = -dims[0]*dims[1];
+  for(           B[2]=[false,true],x[2]=-1; x[2]<dims[2]; B[2]=[true,(++x[2]<dims[2]-1)])
+  for(n-=dims[0],B[1]=[false,true],x[1]=-1; x[1]<dims[1]; B[1]=[true,(++x[1]<dims[1]-1)])
+  for(n-=1,      B[0]=[false,true],x[0]=-1; x[0]<dims[0]; B[0]=[true,(++x[0]<dims[0]-1)], ++n) {
+    //Read current voxel and 3 neighboring voxels using bounds check results
+    var p =   (B[0][0] && B[1][0] && B[2][0]) ? volume[n]                 : 0
+      , b = [ (B[0][1] && B[1][0] && B[2][0]) ? volume[n+1]               : 0
+            , (B[0][0] && B[1][1] && B[2][0]) ? volume[n+dims[0]]         : 0
+            , (B[0][0] && B[1][0] && B[2][1]) ? volume[n+dims[0]*dims[1]] : 0
+          ];
+    //Generate faces
+    for(var d=0; d<3; ++d)
+    if((!!p) !== (!!b[d])) {
+      var s = !p ? 1 : 0;
+      var t = [x[0],x[1],x[2]]
+        , u = dir[d][s]
+        , v = dir[d][s^1];
+      ++t[d];
+      
+      var vertex_count = vertices.length;
+      vertices.push([t[0],           t[1],           t[2]          ]);
+      vertices.push([t[0]+u[0],      t[1]+u[1],      t[2]+u[2]     ]);
+      vertices.push([t[0]+u[0]+v[0], t[1]+u[1]+v[1], t[2]+u[2]+v[2]]);
+      vertices.push([t[0]     +v[0], t[1]     +v[1], t[2]     +v[2]]);
+      faces.push([vertex_count, vertex_count+1, vertex_count+2, vertex_count+3, s ? b[d] : p]);
+    }
+  }
+  return { vertices:vertices, faces:faces };
+}
+
+
+if(exports) {
+  exports.mesher = CulledMesh;
+}
+
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/meshers/greedy.js",function(require,module,exports,__dirname,__filename,process,global){var GreedyMesh = (function() {
+//Cache buffer internally
+var mask = new Int32Array(4096);
+
+return function(volume, dims) {
+  function f(i,j,k) {
+    return volume[i + dims[0] * (j + dims[1] * k)];
+  }
+  //Sweep over 3-axes
+  var vertices = [], faces = [];
+  for(var d=0; d<3; ++d) {
+    var i, j, k, l, w, h
+      , u = (d+1)%3
+      , v = (d+2)%3
+      , x = [0,0,0]
+      , q = [0,0,0];
+    if(mask.length < dims[u] * dims[v]) {
+      mask = new Int32Array(dims[u] * dims[v]);
+    }
+    q[d] = 1;
+    for(x[d]=-1; x[d]<dims[d]; ) {
+      //Compute mask
+      var n = 0;
+      for(x[v]=0; x[v]<dims[v]; ++x[v])
+      for(x[u]=0; x[u]<dims[u]; ++x[u], ++n) {
+        var a = (0    <= x[d]      ? f(x[0],      x[1],      x[2])      : 0)
+          , b = (x[d] <  dims[d]-1 ? f(x[0]+q[0], x[1]+q[1], x[2]+q[2]) : 0);
+        if((!!a) === (!!b) ) {
+          mask[n] = 0;
+        } else if(!!a) {
+          mask[n] = a;
+        } else {
+          mask[n] = -b;
+        }
+      }
+      //Increment x[d]
+      ++x[d];
+      //Generate mesh for mask using lexicographic ordering
+      n = 0;
+      for(j=0; j<dims[v]; ++j)
+      for(i=0; i<dims[u]; ) {
+        var c = mask[n];
+        if(!!c) {
+          //Compute width
+          for(w=1; c === mask[n+w] && i+w<dims[u]; ++w) {
+          }
+          //Compute height (this is slightly awkward
+          var done = false;
+          for(h=1; j+h<dims[v]; ++h) {
+            for(k=0; k<w; ++k) {
+              if(c !== mask[n+k+h*dims[u]]) {
+                done = true;
+                break;
+              }
+            }
+            if(done) {
+              break;
+            }
+          }
+          //Add quad
+          x[u] = i;  x[v] = j;
+          var du = [0,0,0]
+            , dv = [0,0,0]; 
+          if(c > 0) {
+            dv[v] = h;
+            du[u] = w;
+          } else {
+            c = -c;
+            du[v] = h;
+            dv[u] = w;
+          }
+          var vertex_count = vertices.length;
+          vertices.push([x[0],             x[1],             x[2]            ]);
+          vertices.push([x[0]+du[0],       x[1]+du[1],       x[2]+du[2]      ]);
+          vertices.push([x[0]+du[0]+dv[0], x[1]+du[1]+dv[1], x[2]+du[2]+dv[2]]);
+          vertices.push([x[0]      +dv[0], x[1]      +dv[1], x[2]      +dv[2]]);
+          faces.push([vertex_count, vertex_count+1, vertex_count+2, vertex_count+3, c]);
+          
+          //Zero-out mask
+          for(l=0; l<h; ++l)
+          for(k=0; k<w; ++k) {
+            mask[n+k+l*dims[u]] = 0;
+          }
+          //Increment counters and continue
+          i += w; n += w;
+        } else {
+          ++i;    ++n;
+        }
+      }
+    }
+  }
+  return { vertices:vertices, faces:faces };
+}
+})();
+
+if(exports) {
+  exports.mesher = GreedyMesh;
+}
+
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/meshers/monotone.js",function(require,module,exports,__dirname,__filename,process,global){"use strict";
+
+var MonotoneMesh = (function(){
+
+function MonotonePolygon(c, v, ul, ur) {
+  this.color  = c;
+  this.left   = [[ul, v]];
+  this.right  = [[ur, v]];
+};
+
+MonotonePolygon.prototype.close_off = function(v) {
+  this.left.push([ this.left[this.left.length-1][0], v ]);
+  this.right.push([ this.right[this.right.length-1][0], v ]);
+};
+
+MonotonePolygon.prototype.merge_run = function(v, u_l, u_r) {
+  var l = this.left[this.left.length-1][0]
+    , r = this.right[this.right.length-1][0]; 
+  if(l !== u_l) {
+    this.left.push([ l, v ]);
+    this.left.push([ u_l, v ]);
+  }
+  if(r !== u_r) {
+    this.right.push([ r, v ]);
+    this.right.push([ u_r, v ]);
+  }
+};
+
+
+return function(volume, dims) {
+  function f(i,j,k) {
+    return volume[i + dims[0] * (j + dims[1] * k)];
+  }
+  //Sweep over 3-axes
+  var vertices = [], faces = [];
+  for(var d=0; d<3; ++d) {
+    var i, j, k
+      , u = (d+1)%3   //u and v are orthogonal directions to d
+      , v = (d+2)%3
+      , x = new Int32Array(3)
+      , q = new Int32Array(3)
+      , runs = new Int32Array(2 * (dims[u]+1))
+      , frontier = new Int32Array(dims[u])  //Frontier is list of pointers to polygons
+      , next_frontier = new Int32Array(dims[u])
+      , left_index = new Int32Array(2 * dims[v])
+      , right_index = new Int32Array(2 * dims[v])
+      , stack = new Int32Array(24 * dims[v])
+      , delta = [[0,0], [0,0]];
+    //q points along d-direction
+    q[d] = 1;
+    //Initialize sentinel
+    for(x[d]=-1; x[d]<dims[d]; ) {
+      // --- Perform monotone polygon subdivision ---
+      var n = 0
+        , polygons = []
+        , nf = 0;
+      for(x[v]=0; x[v]<dims[v]; ++x[v]) {
+        //Make one pass over the u-scan line of the volume to run-length encode polygon
+        var nr = 0, p = 0, c = 0;
+        for(x[u]=0; x[u]<dims[u]; ++x[u], p = c) {
+          //Compute the type for this face
+          var a = (0    <= x[d]      ? f(x[0],      x[1],      x[2])      : 0)
+            , b = (x[d] <  dims[d]-1 ? f(x[0]+q[0], x[1]+q[1], x[2]+q[2]) : 0);
+          c = a;
+          if((!a) === (!b)) {
+            c = 0;
+          } else if(!a) {
+            c = -b;
+          }
+          //If cell type doesn't match, start a new run
+          if(p !== c) {
+            runs[nr++] = x[u];
+            runs[nr++] = c;
+          }
+        }
+        //Add sentinel run
+        runs[nr++] = dims[u];
+        runs[nr++] = 0;
+        //Update frontier by merging runs
+        var fp = 0;
+        for(var i=0, j=0; i<nf && j<nr-2; ) {
+          var p    = polygons[frontier[i]]
+            , p_l  = p.left[p.left.length-1][0]
+            , p_r  = p.right[p.right.length-1][0]
+            , p_c  = p.color
+            , r_l  = runs[j]    //Start of run
+            , r_r  = runs[j+2]  //End of run
+            , r_c  = runs[j+1]; //Color of run
+          //Check if we can merge run with polygon
+          if(r_r > p_l && p_r > r_l && r_c === p_c) {
+            //Merge run
+            p.merge_run(x[v], r_l, r_r);
+            //Insert polygon into frontier
+            next_frontier[fp++] = frontier[i];
+            ++i;
+            j += 2;
+          } else {
+            //Check if we need to advance the run pointer
+            if(r_r <= p_r) {
+              if(!!r_c) {
+                var n_poly = new MonotonePolygon(r_c, x[v], r_l, r_r);
+                next_frontier[fp++] = polygons.length;
+                polygons.push(n_poly);
+              }
+              j += 2;
+            }
+            //Check if we need to advance the frontier pointer
+            if(p_r <= r_r) {
+              p.close_off(x[v]);
+              ++i;
+            }
+          }
+        }
+        //Close off any residual polygons
+        for(; i<nf; ++i) {
+          polygons[frontier[i]].close_off(x[v]);
+        }
+        //Add any extra runs to frontier
+        for(; j<nr-2; j+=2) {
+          var r_l  = runs[j]
+            , r_r  = runs[j+2]
+            , r_c  = runs[j+1];
+          if(!!r_c) {
+            var n_poly = new MonotonePolygon(r_c, x[v], r_l, r_r);
+            next_frontier[fp++] = polygons.length;
+            polygons.push(n_poly);
+          }
+        }
+        //Swap frontiers
+        var tmp = next_frontier;
+        next_frontier = frontier;
+        frontier = tmp;
+        nf = fp;
+      }
+      //Close off frontier
+      for(var i=0; i<nf; ++i) {
+        var p = polygons[frontier[i]];
+        p.close_off(dims[v]);
+      }
+      // --- Monotone subdivision of polygon is complete at this point ---
+      
+      x[d]++;
+      
+      //Now we just need to triangulate each monotone polygon
+      for(var i=0; i<polygons.length; ++i) {
+        var p = polygons[i]
+          , c = p.color
+          , flipped = false;
+        if(c < 0) {
+          flipped = true;
+          c = -c;
+        }
+        for(var j=0; j<p.left.length; ++j) {
+          left_index[j] = vertices.length;
+          var y = [0.0,0.0,0.0]
+            , z = p.left[j];
+          y[d] = x[d];
+          y[u] = z[0];
+          y[v] = z[1];
+          vertices.push(y);
+        }
+        for(var j=0; j<p.right.length; ++j) {
+          right_index[j] = vertices.length;
+          var y = [0.0,0.0,0.0]
+            , z = p.right[j];
+          y[d] = x[d];
+          y[u] = z[0];
+          y[v] = z[1];
+          vertices.push(y);
+        }
+        //Triangulate the monotone polygon
+        var bottom = 0
+          , top = 0
+          , l_i = 1
+          , r_i = 1
+          , side = true;  //true = right, false = left
+        
+        stack[top++] = left_index[0];
+        stack[top++] = p.left[0][0];
+        stack[top++] = p.left[0][1];
+        
+        stack[top++] = right_index[0];
+        stack[top++] = p.right[0][0];
+        stack[top++] = p.right[0][1];
+        
+        while(l_i < p.left.length || r_i < p.right.length) {
+          //Compute next side
+          var n_side = false;
+          if(l_i === p.left.length) {
+            n_side = true;
+          } else if(r_i !== p.right.length) {
+            var l = p.left[l_i]
+              , r = p.right[r_i];
+            n_side = l[1] > r[1];
+          }
+          var idx = n_side ? right_index[r_i] : left_index[l_i]
+            , vert = n_side ? p.right[r_i] : p.left[l_i];
+          if(n_side !== side) {
+            //Opposite side
+            while(bottom+3 < top) {
+              if(flipped === n_side) {
+                faces.push([ stack[bottom], stack[bottom+3], idx, c]);
+              } else {
+                faces.push([ stack[bottom+3], stack[bottom], idx, c]);              
+              }
+              bottom += 3;
+            }
+          } else {
+            //Same side
+            while(bottom+3 < top) {
+              //Compute convexity
+              for(var j=0; j<2; ++j)
+              for(var k=0; k<2; ++k) {
+                delta[j][k] = stack[top-3*(j+1)+k+1] - vert[k];
+              }
+              var det = delta[0][0] * delta[1][1] - delta[1][0] * delta[0][1];
+              if(n_side === (det > 0)) {
+                break;
+              }
+              if(det !== 0) {
+                if(flipped === n_side) {
+                  faces.push([ stack[top-3], stack[top-6], idx, c ]);
+                } else {
+                  faces.push([ stack[top-6], stack[top-3], idx, c ]);
+                }
+              }
+              top -= 3;
+            }
+          }
+          //Push vertex
+          stack[top++] = idx;
+          stack[top++] = vert[0];
+          stack[top++] = vert[1];
+          //Update loop index
+          if(n_side) {
+            ++r_i;
+          } else {
+            ++l_i;
+          }
+          side = n_side;
+        }
+      }
+    }
+  }
+  return { vertices:vertices, faces:faces };
+}
+})();
+
+if(exports) {
+  exports.mesher = MonotoneMesh;
+}
+
+});
+
+require.define("/node_modules/voxel-perlin-terrain/node_modules/voxel/meshers/stupid.js",function(require,module,exports,__dirname,__filename,process,global){//The stupidest possible way to generate a Minecraft mesh (I think)
+function StupidMesh(volume, dims) {
+  var vertices = [], faces = [], x = [0,0,0], n = 0;
+  for(x[2]=0; x[2]<dims[2]; ++x[2])
+  for(x[1]=0; x[1]<dims[1]; ++x[1])
+  for(x[0]=0; x[0]<dims[0]; ++x[0], ++n)
+  if(!!volume[n]) {
+    for(var d=0; d<3; ++d) {
+      var t = [x[0], x[1], x[2]]
+        , u = [0,0,0]
+        , v = [0,0,0];
+      u[(d+1)%3] = 1;
+      v[(d+2)%3] = 1;
+      for(var s=0; s<2; ++s) {
+        t[d] = x[d] + s;
+        var tmp = u;
+        u = v;
+        v = tmp;
+        var vertex_count = vertices.length;
+        vertices.push([t[0],           t[1],           t[2]          ]);
+        vertices.push([t[0]+u[0],      t[1]+u[1],      t[2]+u[2]     ]);
+        vertices.push([t[0]+u[0]+v[0], t[1]+u[1]+v[1], t[2]+u[2]+v[2]]);
+        vertices.push([t[0]     +v[0], t[1]     +v[1], t[2]     +v[2]]);
+        faces.push([vertex_count, vertex_count+1, vertex_count+2, vertex_count+3, volume[n]]);
+      }
+    }
+  }
+  return { vertices:vertices, faces:faces };
+}
+
+
+if(exports) {
+  exports.mesher = StupidMesh;
+}
+
+});
+
 require.define("/js/voxel-perlin-terrain/demo.js",function(require,module,exports,__dirname,__filename,process,global){var createGame = require('voxel-engine')
 var THREE = require('three')
 var perlin = require('voxel-perlin-terrain')
 
+window.generator = perlin(2, 32)
 window.game = createGame({
-  generateVoxelChunk: perlin,
+  generateVoxelChunk: generator,
   texturePath: './textures/',
   materials: ['grass', 'brick', 'dirt', 'obsidian', 'crate'],
   cubeSize: 25,
   chunkSize: 32,
   chunkDistance: 2,
-  startingPosition: new THREE.Vector3(35, 2000, 35),
+  startingPosition: new THREE.Vector3(35, 1000, 35),
   worldOrigin: new THREE.Vector3(0,0,0),
   controlOptions: {jump: 6}
 })
 
+game.controls.pitchObject.rotation.x = -1.5
+
 game.on('collision', function (item) {
   game.removeItem(item)
 })
+
+var currentMaterial = 1
 
 function createDebris (pos, value) {
   var mesh = new THREE.Mesh(
