@@ -1,0 +1,30 @@
+{
+    "name" : "voxel-perlin-terrain",
+    "version" : "0.0.1",
+    "description" : "generate smooth voxel terrain using perlin noise",
+    "main" : "index.js",
+    "dependencies" : {
+    },
+    "devDependencies" : {
+        "browserify" : "~1.17.1",
+        "voxel-engine" : "0.1.8",
+        "three": "0.54.5-dev"
+    },
+    "repository" : {
+        "type" : "git",
+        "url" : "git://github.com/maxogden/voxel-perlin-terrain.git"
+    },
+    "homepage" : "https://github.com/maxogden/voxel-perlin-terrain",
+    "keywords" : [
+        "voxel",
+        "game",
+        "webgl",
+        "three.js"
+    ],
+    "author" : {
+        "name" : "Max Ogden",
+        "email" : "max@maxogden.com",
+        "url" : "http://maxogden.com"
+    },
+    "license" : "MIT"
+}

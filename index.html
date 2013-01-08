@@ -1,0 +1,28 @@
+<!DOCTYPE HTML>
+<html lang="en">
+  <head>
+    <title>Voxel Engine</title>
+    <meta charset="utf-8">
+    <style type="text/css">
+      body {
+        font-family: Monospace;
+        font-size: 12px;
+        background-color: #f0f0f0;
+        margin: 0px;
+        overflow: hidden;
+      }
+      #container {
+        -moz-user-select: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #stats { bottom: 0px; right: 0px; }
+      .bar-tab { right: 33% !important; left: 33% !important; }
+      .errorMessage { text-align: center; width: 200px; margin: 20px auto; }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <script type="text/javascript" src="./browserify-bundle.js"></script>
+  </body>
+</html>
