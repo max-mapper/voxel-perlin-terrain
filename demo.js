@@ -2,21 +2,26 @@ var createGame = require('voxel-engine')
 var THREE = require('three')
 var perlin = require('voxel-perlin-terrain')
 
+window.generator = perlin(2, 32)
 window.game = createGame({
-  generateVoxelChunk: perlin,
+  generateVoxelChunk: generator,
   texturePath: './textures/',
   materials: ['grass', 'brick', 'dirt', 'obsidian', 'crate'],
   cubeSize: 25,
   chunkSize: 32,
   chunkDistance: 2,
-  startingPosition: new THREE.Vector3(35, 2000, 35),
+  startingPosition: new THREE.Vector3(35, 1000, 35),
   worldOrigin: new THREE.Vector3(0,0,0),
   controlOptions: {jump: 6}
 })
 
+game.controls.pitchObject.rotation.x = -1.5
+
 game.on('collision', function (item) {
   game.removeItem(item)
 })
+
+var currentMaterial = 1
 
 function createDebris (pos, value) {
   var mesh = new THREE.Mesh(

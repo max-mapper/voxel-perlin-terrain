@@ -1,24 +1,29 @@
 var Perlin = require('./perlin')
+var voxel = require('voxel')
 var generator = new Perlin()
 
-module.exports = function generate(l, h) {
-  var d = [ h[0]-l[0], h[1]-l[1], h[2]-l[2] ]
-  var voxels = new Int8Array(d[0]*d[1]*d[2])
-  
-  generator.generate( [l[0], l[2]], [h[0], h[2]], function ( point, value ) {
-    var y = ~~scale(value, 0, 1, 0, d[1])
-    var x = point[0]
-    var z = point[1]
-    var idx = voxelIndex(x, y, z, d[1], d[2])
-    voxels[idx] = 1
+module.exports = function generate(chunkDistance, chunkSize) {
+  var width = chunkDistance * 2 * chunkSize
+  var noise = this.noise = new Int8Array(width * width)
+  var lowerLeft = [0, 0]
+  var upperRight = [width, width]
+  generator.generate( lowerLeft, upperRight, function ( point, value ) {
+    noise[point[0] + point[1]*width] = ~~scale(value, 0, 1, 0, chunkSize)
   })
   
-  return {voxels: voxels, dims: d}
-
-}
-
-function voxelIndex(x, y, z, ySize, zSize) {
-  return x + y*ySize + z*zSize*zSize
+  // todo: investigate using typed array 'views' to lower memory footprint
+  return function perlinChunk(l, h) {
+    var fromLow = chunkSize * -chunkDistance
+    var fromHigh = chunkSize * chunkDistance
+    var toLow = lowerLeft[0]
+    var toHigh = upperRight[0]
+    return voxel.generate(l, h, function(x, y, z, n) {
+      x = scale(x, fromLow, fromHigh, toLow, toHigh)
+      z = scale(z, fromLow, fromHigh, toLow, toHigh)
+      y = scale(y, fromLow, fromHigh, toLow, toHigh)
+      return y > noise[x + z*width] ? 0 : 1
+    })
+  }
 }
 
 function scale( x, fromLow, fromHigh, toLow, toHigh ) {
