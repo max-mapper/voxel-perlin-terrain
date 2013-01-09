@@ -1,6 +1,6 @@
 {
     "name" : "voxel-perlin-terrain",
-    "version" : "0.0.4",
+    "version" : "0.0.5",
     "description" : "generate voxel terrain using perlin noise",
     "main" : "index.js",
     "dependencies" : {
@@ -9,7 +9,7 @@
     },
     "devDependencies" : {
         "browserify" : "~1.17.1",
-        "voxel-engine" : "0.1.8",
+        "voxel-engine" : "0.1.9",
         "three": "0.54.5-dev"
     },
     "repository" : {

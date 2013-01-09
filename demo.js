@@ -13,8 +13,8 @@ window.game = createGame({
   cubeSize: 25,
   chunkSize: chunkSize,
   chunkDistance: chunkDistance,
-  startingPosition: new THREE.Vector3(35, 1000, 35),
-  worldOrigin: new THREE.Vector3(0,0,0),
+  startingPosition: [35, 1000, 35],
+  worldOrigin: [0,0,0],
   controlOptions: {jump: 6}
 })
 
