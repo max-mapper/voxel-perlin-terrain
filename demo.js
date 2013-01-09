@@ -9,7 +9,7 @@ window.generator = perlin(chunkDistance, chunkSize)
 window.game = createGame({
   generateVoxelChunk: generator,
   texturePath: './textures/',
-  materials: ['grass', 'brick', 'dirt', 'obsidian', 'crate'],
+  materials: ['grass', 'obsidian', 'dirt', 'whitewool', 'crate'],
   cubeSize: 25,
   chunkSize: chunkSize,
   chunkDistance: chunkDistance,
