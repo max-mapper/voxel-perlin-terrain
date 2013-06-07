@@ -1,18 +1,13 @@
 var perlin = require('./')
 var textures = "http://commondatastorage.googleapis.com/voxeltextures/"
 
-var chunkSize = 32
+var game = require('voxel-hello-world')({
+  generateChunks: false,
+  chunkDistance: 2
+})
 
 window.generator = perlin('foo', 0, 5)
-
-var game = require('voxel-hello-world')({
-  texturePath: textures,
-  playerSkin: textures + 'player.png',
-  generateChunks: false,
-  materialFlatColor: true,
-  chunkDistance: 2,
-  materials: ['#ffffff']
-})
+var chunkSize = 32
 
 game.voxels.on('missingChunk', function(p) {
   var voxels = generator(p, chunkSize)
@@ -24,9 +19,6 @@ game.voxels.on('missingChunk', function(p) {
   game.showChunk(chunk)
 })
 
-
-var fly = require('voxel-fly')
-var makeFly = fly(game)
-makeFly(game.controls.target()).startFlying()
+game.paused = false
 
 window.game = game

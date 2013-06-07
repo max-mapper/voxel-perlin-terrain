@@ -1,8 +1,9 @@
 var noise = require('perlin').noise
 
-module.exports = function(seed, floor, ceiling) {
+module.exports = function(seed, floor, ceiling, divisor) {
   floor = floor || 0
   ceiling = ceiling || 20 // minecraft's limit
+  divisor = divisor || 50
   noise.seed(seed)
   return function generateChunk(position, width) {
     var startX = position[0] * width
@@ -10,7 +11,7 @@ module.exports = function(seed, floor, ceiling) {
     var startZ = position[2] * width
     var chunk = new Int8Array(width * width * width)
     pointsInside(startX, startZ, width, function(x, z) {
-      var n = noise.simplex2(x/width , z/width)
+      var n = noise.simplex2(x / divisor , z / divisor)
       var y = ~~scale(n, -1, 1, floor, ceiling)
       if (y === floor || startY < y && y < startY + width) {
         var xidx = Math.abs((width + x % width) % width)
