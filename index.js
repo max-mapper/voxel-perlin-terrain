@@ -13,7 +13,7 @@ module.exports = function(seed, floor, ceiling, divisor) {
     pointsInside(startX, startZ, width, function(x, z) {
       var n = noise.simplex2(x / divisor , z / divisor)
       var y = ~~scale(n, -1, 1, floor, ceiling)
-      if (y === floor || startY < y && y < startY + width) {
+      if (startY <= y && y < startY + width) {
         var xidx = Math.abs((width + x % width) % width)
         var yidx = Math.abs((width + y % width) % width)
         var zidx = Math.abs((width + z % width) % width)
